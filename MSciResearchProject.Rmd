@@ -1,0 +1,382 @@
+---
+title: "Msci Research Project"
+output:
+  html_notebook: default
+  html_document: default
+  pdf_document: default
+---
+These are all the libraries that are needed. Use install.packages() if not installed on computer.
+
+```{r load libraries, echo=FALSE}
+library("limma")
+library("dplyr")
+library("ggplot2")
+library("ggrepel")
+library("illuminaHumanv4.db")
+library("DBI")
+library("openxlsx")
+```
+
+This shows where the figures should be saved on my computer.
+```{r global_options, echo=FALSE}
+knitr::opts_chunk$set(fig.path="Users/sakura/Desktop/Uni!/Stage4/R/RPlots/")
+```
+
+
+**Setting up datasets for total ESSDAI comparisons in both validation and discovery cohorts.**
+Divide ESSDAIs scores into High (>= 14), Moderate (> 5, < 14), Low (<= 5) activity. (Form column Var)
+
+Clinical data taken from clin (formed from Clinical_data_SB.csv).Data on the ESSDAI scores (both total and specific domains taken from here. All domains except Renal are in this dataset) and PatientID. This data is joined to the phenotype data in Validation_/Discovery_Pheno_Data (taken from ???) to form vali_pheno and disc_pheno.
+vali_in and disc_in are datasets with the Normalised Expression values for each cohort.
+These are then matched to sampleIDs of the data in vali_pheno and disc_pheno so that we are only analysising data for those than have both ESSDAI scores and gene expression data.
+
+
+```{r ESSDAI_Validation}
+# `Datasets for Validation Cohort: ESSDAI`
+vali_pheno        <- Validation_Pheno_Data %>% left_join((clin %>% dplyr::select(PatientID,ESSDAI_total_June15)), by = "PatientID") %>% na.omit %>% mutate(Var = ifelse(ESSDAI_total_June15 >= 14, "High", ifelse( ESSDAI_total_June15 <= 5, "Low", "Mod")))
+vali_in           <- Normalised_Validation_Expression
+colnames(vali_in) <- colnames(vali_in) %>% gsub("X","",.)
+vali_in           <- vali_in[,(match(vali_pheno$sampleID, colnames(vali_in)) %>% na.omit)]
+```
+
+```{r "Datasets for Discovery Cohort: ESSDAI"}
+disc_pheno        <- Discovery_Pheno_Data %>% left_join((clin %>% dplyr::select(PatientID,ESSDAI_total_June15)), by = "PatientID") %>% na.omit %>% mutate(Var = ifelse(ESSDAI_total_June15 >= 14, "High", ifelse( ESSDAI_total_June15 <= 5, "Low", "Mod")))
+disc_in           <- Normalised_Discovery_Expression
+colnames(disc_in) <- colnames(disc_in) %>% gsub("X","",.)
+disc_in           <- disc_in[,(match(disc_pheno$sampleID, colnames(disc_in)) %>% na.omit)] 
+```
+
+
+**Function for analysis of differentially expressed gene in High, Low and Moderate ESSDAI**
+```{r Function for comparing High, Low and Moderate ESSDAI patients}
+DAComp   <- function(DA, cohort, expr){
+TotalComp           <- model.matrix(~0 + Var, cohort)
+colnames(TotalComp) <- colnames(TotalComp) %>% gsub("Var","",.)
+cont                <- makeContrasts(High-Low, High-Mod, Mod-Low, levels = colnames(TotalComp))
+fit                 <- lmFit(expr, TotalComp) %>% contrasts.fit(cont) %>% eBayes
+tt                  <- topTable(fit, coef = DA, number = 10, sort.by = "P", lfc = log2(1.5), p.value = 0.05)
+return(tt)
+}
+```
+
+```{r DAComp for Validation}
+DACompVali <- function(DA){
+  midway <- DAComp(DA, vali_pheno, vali_in)
+  return(midway)
+}
+```
+
+```{r DAComp for Discovery}
+DACompDisc <- function(DA){
+  midway <- DAComp(DA, disc_pheno, disc_in)
+  return(midway)
+}
+```
+
+```{r DACompVali HL}
+returnedVHL <- DACompVali("High - Low")
+```
+
+```{r DACompVali HM}
+returnedVHM  <- DACompVali("High - Mod")
+```
+
+```{r DACompVali ML}
+returnedVML  <- DACompVali("Mod - Low")
+```
+
+```{r DACompDisc HL}
+returnedDHL  <- DACompDisc("High - Low")
+```
+
+```{r DACompDisc HM}
+returnedDHM  <- DACompDisc("High - Mod")
+```
+
+```{r DACompDisc ML}
+returnedDML  <- DACompDisc("Mod - Low")
+```
+
+```{Finding genes from reference}
+anno <- illuminaHumanv4fullReannotation() %>% as.data.frame
+anno %>% filter(IlluminaID == rownames(returnedDHL)[1])
+```
+
+returnedDHL 
+    IlluminaID Symbol
+1 ILMN_2339294 LILRB5 - most related to osteosarcoma (according to OpenTargets)
+
+all other comparisons gained no results (double checked with old method)
+
+
+
+
+**Forming datasets to look at differentially expressed genes between patients with No Activity (score = 0), and Any Activity (score >= 1) for each domain in the ESSDAI.** (Find renal values!)
+
+```{r "Datasets for Validation Cohort: Domains"}
+vali_pheno2        <- Validation_Pheno_Data %>% left_join(clin %>% dplyr::select(PatientID,Constitutional.domain.x, Lymphadenopathy.domain, Glandular.domain, Articular.domain, Cutaneous.domain, Respiratory.domain, Muscular.domain, Peripheral.nervous.system.domain, Central.nervous.system.domain, Hematological.domain, Biological.domain, ESSDAI_total_June15), by = "PatientID") %>% na.omit
+vali_in2           <- Normalised_Validation_Expression
+colnames(vali_in2) <- colnames(vali_in2) %>% gsub("X","",.)
+vali_in2           <- vali_in2[,(match(vali_pheno2$sampleID, colnames(vali_in2)) %>% na.omit)]
+```
+
+```{r "Datasets for Discovery Cohort: Domains" }
+disc_pheno2        <- Discovery_Pheno_Data %>% left_join(clin %>% dplyr::select(PatientID,Constitutional.domain.x, Lymphadenopathy.domain, Glandular.domain, Articular.domain, Cutaneous.domain, Respiratory.domain, Muscular.domain, Peripheral.nervous.system.domain, Central.nervous.system.domain, Hematological.domain, Biological.domain, ESSDAI_total_June15), by = "PatientID") %>% na.omit
+disc_in2          <- Normalised_Discovery_Expression
+colnames(disc_in2) <- colnames(disc_in2) %>% gsub("X","",.)
+disc_in2           <- disc_in2[,(match(disc_pheno2$sampleID, colnames(disc_in2)) %>% na.omit)] 
+```
+
+
+**Function to analyse No Act against Any Act in specific domains**
+
+```{r Function for Comparing No Activity and Any Activity for each ESSDAI Domain}
+ActComp    <- function(domain, cohort, expr){
+  Activity <- ifelse(cohort[domain] < 1, "NoAct", "AnyAct")
+  cohort   <- mutate(cohort, Activity) 
+  cohort   <- na.omit(cohort)
+  
+  Act_design           <- model.matrix(~0 + Activity, cohort)
+  colnames(Act_design) <- colnames(Act_design) %>% gsub("Activity","",.)
+  cont                 <- makeContrasts(NoAct-AnyAct, levels = colnames(Act_design))
+  fit                  <- lmFit(expr, Act_design) %>% contrasts.fit(cont) %>% eBayes
+  tt                   <- topTable(fit, coef = "NoAct - AnyAct", number = 30487, sort.by = "P", lfc = log2(1.5), p.value = 0.01, adjust.method = "none")
+  return(tt)
+}
+```
+
+**Function for Volcano Plot**
+
+```{r Function for Volcano Plot for Domains}
+gene_list        <- topTable(fit, coef = "NoAct - AnyAct", number=91461, sort.by="logFC")
+lfc   <- log2(1.5)
+pval  <- -log10(0.05)
+
+VolPlotDomains <- function(gene_list) ####???
+
+anno  <- illuminaHumanv4fullReannotation() %>% 
+  as.data.frame %>% 
+  dplyr::slice(match(rownames(gene_list) %>% as.vector,IlluminaID)) %>% 
+  dplyr::select(IlluminaID,"Symbol"=SymbolReannotated)
+
+inter <- c("LILRB5")
+
+df    <- gene_list %>% 
+  as.data.frame %>% 
+  add_rownames("IlluminaID") %>% 
+  mutate(`-log10PVal` = -log10(`adj.P.Val`)) %>% 
+  dplyr::select(IlluminaID,logFC,`-log10PVal`) %>% 
+  left_join(anno) %>% 
+  mutate(SymbolPlot = ifelse(Symbol %in% inter, Symbol, ""),
+         Sig = ifelse((abs(logFC) > lfc & `-log10PVal` > pval), "Sig", ""))
+
+gg    <- ggplot(df, aes(x = logFC, y = `-log10PVal`, colour = Sig)) +
+  geom_point() + theme_bw() + 
+  geom_hline(yintercept = pval, colour = "red") +
+  geom_vline(xintercept = c(lfc,-lfc), colour = "red") +
+  scale_colour_manual(values = c("black", "red")) +
+  ylab("-log10(Adjusted P Value)") +
+  geom_text_repel(aes(label = df$SymbolPlot)) + 
+  ggtitle("Volcano Plot of Differentially Expressed Genes\nIllumina HT12-v4 Microarray - Biological Domain")
+
+print(gg)
+}
+```
+
+Validation
+
+```{r Domain Analysis for Validation}
+ActCompVali <- function(domain){
+  midway <- ActComp( domain, vali_pheno2, vali_in2)
+  return(midway)
+}
+```
+
+```{r Vali_Constitutional}
+returned <- ActCompVali("Constitutional.domain.x")
+```
+2 obs for Vali_Constitutional (returned)
+
+```{r Vali_Lymphadenopathy}
+returned2 <- ActCompVali("Lymphadenopathy.domain")
+```
+
+```{r Vali_Glandular}
+returned3 <- ActCompVali("Glandular.domain")
+```
+
+```{r Vali_Articular}
+returned4 <- ActCompVali("Articular.domain")
+```
+1 obs for Vali_Articular (returned4)
+
+
+```{r Vali_Cutaneous}
+returned5 <- ActCompVali("Cutaneous.domain")
+```
+2 obs 
+
+
+```{r Vali_Respiratory}
+returned6 <- ActCompVali("Respiratory.domain")
+```
+2 obs
+
+
+```{r Vali_Muscular}
+returned7 <- ActCompVali("Muscular.domain")
+```
+10 obs (may be more?) 
+
+
+
+```{r Vali_Peripheral.nervous.system}
+returned8 <- ActCompVali("Peripheral.nervous.system.domain")
+```
+10 obs!!
+
+
+
+```{r Vali_Central.nervous.system}
+returned9 <- ActCompVali("Central.nervous.system.domain")
+```
+9 obs!!
+
+
+```{r Vali_Hematological}
+returned10 <- ActCompVali("Hematological.domain")
+```
+2 obs
+
+
+```{r Vali_Biological}
+returned11 <- ActCompVali("Biological.domain")
+returned11
+```
+10 obs (more?)
+
+All showed values except Lymphadenopathy and Glandular
+
+
+
+Discovery
+
+```{r Domain Analysis for Discovery}
+ActCompDisc <- function(domain){
+  midway <- ActComp(domain, disc_pheno2, disc_in2)
+  return(midway)
+}
+```
+
+```{Disc_Const}
+returned1.2 <- ActCompDisc("Constitutional.domain.x")
+```
+7 obs- not same as vali
+
+
+```{Disc_Lymph}
+returned2.2 <- ActCompVali("Lymphadenopathy.domain")
+```
+
+```{Disc_Glan}
+returned3.2 <- ActCompVali("Glandular.domain")
+```
+
+```{Disc_Arti}
+returned4.2 <- ActCompVali("Articular.domain")
+```
+1 obs - same! 	
+ILMN_1661631 (also present in vali_const) LILRA3: Leukocyte Immunoglobulin Like Receptor A3
+
+
+```{Disc_Cuta}
+returned5.2 <- ActCompVali("Cutaneous.domain")
+```
+2 obs - same!
+
+
+```{Disc_Resp}
+returned6.2 <- ActCompVali("Respiratory.domain")
+```
+2 obs - same!
+
+
+```{Disc_Musc}
+returned7.2 <- ActCompVali("Muscular.domain")
+```
+10 obs - same (check if there's more whether they're the same?)
+
+
+```{Disc_PNS}
+returned8.2 <- ActCompVali("Peripheral.nervous.system.domain")
+```
+10 obs - same!
+
+```{Disc_CNS}
+returned9.2 <- ActCompVali("Central.nervous.system.domain")
+```
+9 obs - same!
+
+```{Disc_Hema}
+returned10.2 <- ActCompVali("Hematological.domain")
+```
+2 obs -same!
+
+```{Disc_Bio}
+returned11.2 <- ActCompVali("Biological.domain")
+```
+10 obs - same!
+
+Script to make spreadsheet for Fai and Andrew with DEGs from domains with results >20 
+
+```{r do_all}
+domains_to_get <- c("Biological.domain","Constitutional.domain.x", "Lymphadenopathy.domain", "Glandular.domain", "Articular.domain", "Cutaneous.domain", "Respiratory.domain", "Muscular.domain", "Peripheral.nervous.system.domain", "Central.nervous.system.domain", "Hematological.domain") %>% unique
+
+wb <- openxlsx::createWorkbook() 
+for(i in domains_to_get) {
+  returned_tmp   <- ActCompVali(i) 
+  if(nrow(returned_tmp) > 20) {
+    print(i)
+    sheet_name   <- gsub(".","",i,fixed = T)
+    returned_tmp <- returned_tmp %>% 
+                    add_rownames("IlluminaID") %>% 
+                    dplyr::select(IlluminaID,logFC,P.Value,FDR=adj.P.Val) %>% 
+                    left_join(anno)
+    openxlsx::addWorksheet(wb, sheet_name)
+    openxlsx::writeData(wb, sheet_name, returned_tmp)
+  }
+}
+openxlsx::saveWorkbook(wb, file = "DE_Tables_Andrew.xlsx", overwrite = T)
+```
+
+```{r Box Plots for each gene of interest for each domain}
+BoxPlotDomains    <- function(domain, cohort, expr, probe){
+ Activity <- ifelse(cohort[domain] < 1, "NoAct", "AnyAct")
+ plot_data   <- mutate(cohort, as.factor(Activity)) 
+ plot_data   <- na.omit(plot_data)
+ gene_expr <- t(expr[row.names(expr) == probe,])
+ plot_data <- mutate(plot_data, gene_expr)
+ p <- ggplot(plot_data, aes(Activity, gene_expr))
+ p + geom_boxplot()
+ return(p)
+}
+
+BPD_Vali <- function(domain, probe){
+  midway <- BoxPlotDomains( domain, vali_pheno2, vali_in2, probe)
+  return(midway)
+}
+ 
+BPD_Disc <- function(domain, probe){
+  midway <- BoxPlotDomains( domain, disc_pheno2, disc_in2, probe)
+  return(midway)
+}
+```
+
+
+
+```{r Boxplot for ILMN_2148785 in Biological domain}
+Bio_gene1 <- BPD_Vali("Biological.domain", "ILMN_2148785")
+Bio_gene1
+
+##"ILMN_2148785"
+```
