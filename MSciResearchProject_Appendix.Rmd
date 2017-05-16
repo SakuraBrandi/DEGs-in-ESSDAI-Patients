@@ -1,11 +1,14 @@
 ---
-title: 'Appendix Figure F: Msci Research Project'
+title: "Appendix Figure F: Msci Research Project"
+author: Sakura Brandi
+date: May 4th, 2017
 output:
-  html_document: default
-  html_notebook: default
-  pdf_document: default
+  pdf_document:
+    toc: true
+    toc_depth: 2
 ---
-  This notebook uses more complete clinical data by adding the renal domain scores (and thus changing the total ESSDAI scores) which were not included in Clinical_data_SB.csv. This new file is named Clinical_data_SB_OnlyNeeded.csv.
+
+This notebook uses more complete clinical data by adding the renal domain scores (and thus changing the total ESSDAI scores) which were not included in Clinical_data_SB.csv. This new file is named Clinical_data_SB_OnlyNeeded.csv.
 
 NOTE: names for cohorts have been inverted compared to the dissertation document. Thus the bigger cohort in this R notebook is validation, and the smaller is discovery. Whilst in the dissertation Validation is the smaller cohort and Discovery is the bigger cohort. The rationale being that if you’re leveraging machine learning methods, then the larger dataset should be the training/discovery set, and the other would be an independent validation. The names in R are different because they were following the naming from a previous project.
 
@@ -30,13 +33,20 @@ knitr::opts_chunk$set(fig.path="Users/sakura/Desktop/Uni!/Stage4/CMB4009_Researc
 
 These are the steps needed to import the data files (.csv and .txt) and change them for use in the project.
 ```{r ToStart}
-read.csv("../R/ToStart/ToPassOn/Clinical_data_SB_OnlyNeeded.csv")
-read.table("../R/ToStart/ToPassOn/Normalised_Discovery_Expression.txt")
-read.table("../R/ToStart/ToPassOn/Normalised_validation_Expression.txt")
-read.table("../R/ToStart/ToPassOn/Validation_Pheno_Data.txt")
-read.table("../R/ToStart/ToPassOn/Discovery_Pheno_Data.txt")
-clin2 <- Clinical_data_SB_OnlyNeeded %>% dplyr::select(PatientID = ID, everything())
+Clinical_data_SB_OnlyNeeded      <- read.csv("../R/ToStart/ToPassOn/Clinical_data_SB_OnlyNeeded.csv")
+Normalised_Discovery_Expression  <- read.table("../R/ToStart/ToPassOn/Normalised_Discovery_Expression.txt")
+Normalised_Validation_Expression <- read.table("../R/ToStart/ToPassOn/Normalised_validation_Expression.txt")
+Validation_Pheno_Data            <- read.table("../R/ToStart/ToPassOn/Validation_Pheno_Data.txt")
+Discovery_Pheno_Data             <- read.table("../R/ToStart/ToPassOn/Discovery_Pheno_Data.txt")
+
+clin2     <- Clinical_data_SB_OnlyNeeded %>% dplyr::select(PatientID = ID, everything())
+colnames(Validation_Pheno_Data)[colnames(Validation_Pheno_Data) == "Sample_Name"] <- "PatientID"
+colnames(Discovery_Pheno_Data)[colnames(Discovery_Pheno_Data) == "Sample_Name"] <- "PatientID"
+
 ```
+  
+  
+# Power Calculations for each Cohort by domain 
   
   The power calculations should be done for the groups in each individual domain and the low, moderate and high disease activity comparisons. So for example for the domains, n1 and n2 are numbers in NoAct and AnyAct columns respectively, in the total ESSDAI comparisons the groups would be a combination of the 3 groups.
   The general formula for the calculations is pwr.t2n.test(n1, n2, d, sig.level, power), where the value to be calculated is not included and d is the effect size. The effect size, according to Cohen (Cohen, 1977, Statistical Power Analysis for the Behavioral Sciences (2nd Edition)), for each effect size is: small= 0.25, medium = 0.5, large = 0.8. 
@@ -57,14 +67,14 @@ M <- pwr.t.test(d= 0.5, sig.level = 0.05, power= 0.8)
 L <- pwr.t.test(d= 0.8, sig.level = 0.05, power= 0.8)
 ```
 
-**Setting up datasets for total ESSDAI comparisons in both validation and discovery cohorts.**
+# Setting up datasets for total ESSDAI comparisons in both validation and discovery cohorts.
 Divide ESSDAIs scores into High (>= 14), Moderate (> 5, < 14), Low (<= 5) activity. (Form column Var)
 
   Clinical data taken from clin2 (formed from Clinical_data_SB_OnlyNeeded.csv). Data on the ESSDAI scores (both total and specific domains taken from here) and PatientID. This data is joined to the phenotype data in Validation_/Discovery_Pheno_Data to form vali_pheno and disc_pheno.
 vali_in and disc_in are datasets with the Normalised Expression values for each cohort.
 These are then matched to sampleIDs of the data in vali_pheno and disc_pheno so that we are only analysising data for those that have both ESSDAI scores and gene expression data.
 
-
+## Validation, Total ESSDAI
 ```{r ESSDAI_Validation}
 # Datasets for Validation Cohort: ESSDAI
 vali_pheno3        <- Validation_Pheno_Data %>% left_join((clin2 %>% dplyr::select(PatientID,ESSDAI_total_June15,doby)), by = "PatientID") %>% na.omit %>% mutate(Var = ifelse(ESSDAI_total_June15 >= 14, "High", ifelse( ESSDAI_total_June15 <= 5, "Low", "Mod")))
@@ -73,6 +83,7 @@ colnames(vali_in3) <- colnames(vali_in3) %>% gsub("X","",.)
 vali_in3           <- vali_in3[,(match(vali_pheno3$sampleID, colnames(vali_in3)) %>% na.omit)]
 ```
 
+## Discovery, Total ESSDAI
 ```{r "Datasets for Discovery Cohort: ESSDAI"}
 disc_pheno3        <- Discovery_Pheno_Data %>% left_join((clin2 %>% dplyr::select(PatientID,ESSDAI_total_June15)), by = "PatientID") %>% na.omit %>% mutate(Var = ifelse(ESSDAI_total_June15 >= 14, "High", ifelse( ESSDAI_total_June15 <= 5, "Low", "Mod")))
 disc_in3           <- Normalised_Discovery_Expression
@@ -87,7 +98,7 @@ table(disc_pheno3$Var)
 ```
 
 
-**Function for analysis of differentially expressed gene in High, Low and Moderate ESSDAI**
+# Function for analysis of differentially expressed gene in High, Low and Moderate ESSDAI
 
 Comparing the gene expression of the genes between the 3 disease severity groups (in Var) using a contrast matrix.
 This is a function so nothing needs to be changed. The script below just needs to be run for the comparisons wanted.
@@ -143,13 +154,15 @@ returnedDML2  <- DACompDisc2("Mod - Low")
 Use this to find what genes are associated to the Human v4 Illumina probes if there are DEGs identified.
 ```{r Finding genes from reference}
 anno <- illuminaHumanv4fullReannotation() %>% as.data.frame
-anno %>% filter(IlluminaID == rownames(returnedDHL)[1])
+# anno %>% filter(IlluminaID == rownames(returned)[1])
 ```
 
 No DEGs identified
 
 
-**Forming datasets to look at differentially expressed genes between patients with No Activity (score = 0), and Any Activity (score >= 1) for each domain in the ESSDAI.** 
+# Forming datasets to look at differentially expressed genes between patients with No Activity (score = 0), and Any Activity (score >= 1) for each domain in the ESSDAI. 
+
+## Validation, Domains
 
 ```{r "Datasets for Validation Cohort: Domains"}
 vali_pheno4        <- Validation_Pheno_Data %>% left_join(clin2 %>% dplyr::select(PatientID,Constitutional.domain.x, Lymphadenopathy.domain, Glandular.domain, Articular.domain, Cutaneous.domain, Respiratory.domain, Muscular.domain, Peripheral.nervous.system.domain, Central.nervous.system.domain, Hematological.domain, Biological.domain, Renal.domain, ESSDAI_total_June15), by = "PatientID") %>% na.omit
@@ -158,6 +171,8 @@ colnames(vali_in4) <- colnames(vali_in4) %>% gsub("X","",.)
 vali_in4           <- vali_in4[,(match(vali_pheno4$sampleID, colnames(vali_in4)) %>% na.omit)]
 ```
 
+
+## Discovery, Domains
 ```{r "Datasets for Discovery Cohort: Domains" }
 disc_pheno4        <- Discovery_Pheno_Data %>% left_join(clin2 %>% dplyr::select(PatientID,Constitutional.domain.x, Lymphadenopathy.domain, Glandular.domain, Articular.domain, Cutaneous.domain, Respiratory.domain, Muscular.domain, Peripheral.nervous.system.domain, Central.nervous.system.domain, Hematological.domain, Biological.domain, Renal.domain, ESSDAI_total_June15), by = "PatientID") %>% na.omit
 disc_in4          <- Normalised_Discovery_Expression
@@ -166,7 +181,7 @@ disc_in4           <- disc_in4[,(match(disc_pheno4$sampleID, colnames(disc_in4))
 ```
 
 
-**Function to analyse No Act against Any Act in specific domains**
+# Function to analyse No Act against Any Act in specific domains
 
 adjust.method(BH) for multiple test correction
 p.value for these is less than 0.01, not 0.05 like the total ESSDAI scores. That is because 0.01 did not generate any results for the total ESSDAI analysis so 0.05 was tested to see if there were values when using a bigger p value. However 0.01 is more justifiable since we are not using false discovery rate (FDR) corrections which is a type of multiple test correction. Still not ideal, the best scenario would be to have more subjects in each group (which are distributed between the groups a little better) so that a p value of 0.05 can be used together with FDR correction.
@@ -188,7 +203,7 @@ ActComp    <- function(domain, cohort, expr){
 }
 ```
 
-** Validation **
+## Validation
 
 ```{r Domain Analysis for Validation}
 ActCompVali2 <- function(domain){
@@ -247,7 +262,7 @@ returned12 <- ActCompVali2("Renal.domain")
 
 
 
-** Discovery **
+## Discovery
 
 ```{r Domain Analysis for Discovery}
 ActCompDisc2 <- function(domain){
@@ -305,7 +320,9 @@ returned12.2 <- ActCompDisc2("Renal.domain")
 ```
 
 
-**Script for Volcano Plot**
+# Script for Volcano Plot
+
+## VP Script for Comparing No Activity and Any Activity for each ESSDAI Domain (extracted from function)
 
 Haven't figured out how to use the data from the function above, so instead use the below extracted versions just for when volcano plots are required. Remember to change vali_ to disc_ when plotting a different cohort. These need to be changed for each domain. Delete gene_list and Activity at the end of each plot (script after the volcano plot chunk). The graph prints at the end but can be saved as well by changing the "png" parts. Remember to change the ggtitle and file names for each domain.
 
@@ -320,17 +337,6 @@ Haven't figured out how to use the data from the function above, so instead use 
   cont                 <- makeContrasts(AnyAct-NoAct, levels = colnames(Act_design))
   fit                  <- lmFit(disc_in4, Act_design) %>% contrasts.fit(cont) %>% eBayes
   gene_list            <- topTable(fit, coef = "AnyAct - NoAct", number = Inf,  sort.by="P", adjust.method = "none")
-
-```
-
-This one not really needed since there are no DEGs found for the total ESSDAI comparisons, however just in theory or if there are more samples in the future, this below should work in the same way. Change the "High - Low" part in gene_list to the other combinations if different graph needed.
-```{r VP Script for comparing High, Low and Moderate ESSDAI patients (extracted from function)}
-
-design           <- model.matrix(~0 + Var, vali_pheno3)
-colnames(design) <- colnames(design) %>% gsub("Var","",.)
-cont             <- makeContrasts(High-Low, High-Mod, Mod-Low, levels = colnames(design))
-fit              <- lmFit(vali_in3, design) %>% contrasts.fit(cont) %>% eBayes
-gene_list        <- topTable(fit, coef = "High - Low", number=Inf, sort.by="P")
 
 ```
 
@@ -391,7 +397,21 @@ rm(gene_list)
 disc_pheno4$Activity <- NULL
 ```
 
-**Script to make spreadsheet for Fai and Andrew with DEGs from domains with results >n** 
+## VP Script for comparing High, Low and Moderate ESSDAI patients (extracted from function)
+
+This one not really needed since there are no DEGs found for the total ESSDAI comparisons, however just in theory or if there are more samples in the future, this below should work in the same way. Change the "High - Low" part in gene_list to the other combinations if different graph needed.
+```{r VP Script for comparing High, Low and Moderate ESSDAI patients (extracted from function)}
+
+design           <- model.matrix(~0 + Var, vali_pheno3)
+colnames(design) <- colnames(design) %>% gsub("Var","",.)
+cont             <- makeContrasts(High-Low, High-Mod, Mod-Low, levels = colnames(design))
+fit              <- lmFit(vali_in3, design) %>% contrasts.fit(cont) %>% eBayes
+gene_list        <- topTable(fit, coef = "High - Low", number=Inf, sort.by="P")
+
+```
+
+
+# Script to make spreadsheet for Fai and Andrew with DEGs from domains with results >n
 n can be changed by changing the 0 to whatever the minimum number of results is needed in "if(nrow(returned_tmp) > 0)"
 The file should save in whatever folder is specified at the start. Rememebr to change file name if rerun as it will delete any previous ones with the same name.
 
@@ -412,22 +432,22 @@ for(i in domains_to_get) {
     openxlsx::writeData(wb, sheet_name, returned_tmp)
   }
 }
-openxlsx::saveWorkbook(wb, file = "DE_Tables_Andrew_.xlsx", overwrite = T)
+openxlsx::saveWorkbook(wb, file = "DE_Tables_Andrew_3.xlsx", overwrite = T)
 ```
 
 
-** Box Plots for each gene of interest for each domain **
+# Box Plots for each gene of interest for each domain
 The box plot shows the gene expression levels for a gene of interest in both groups NoAct and AnyAct in a specific domain.
 This can show whether the gene is being expressed more or less in the AnyAct grouped compared to NoAct.
 Use the illumina probe to select the gene to be used.
 
 ```{r extracted Box Plots for each gene of interest for each domain}
 
-Activity <- ifelse(vali_pheno2["Muscular.domain"] < 1, "NoAct", "AnyAct")
-plot_data   <- mutate(vali_pheno2, as.factor(Activity)) 
+Activity <- ifelse(vali_pheno4["Muscular.domain"] < 1, "NoAct", "AnyAct")
+plot_data   <- mutate(vali_pheno4, as.factor(Activity)) 
 plot_data   <- na.omit(plot_data)
 
-gene_expr <- t(vali_in2[row.names(vali_in2) == "ILMN_1749662",])
+gene_expr <- t(vali_in4[row.names(vali_in4) == "ILMN_1749662",])
 
 plot_data <- mutate(plot_data, gene_expr)
 p <- ggplot(plot_data, aes(Activity, gene_expr))
@@ -435,7 +455,7 @@ p + geom_boxplot()
 
 ```
 
-
+# Box Plot Function
 The function needs some tweaking, but the extracted version above works.
 
 ```{r Function Box Plots for each gene of interest for each domain}
@@ -463,7 +483,7 @@ BPD_Disc <- function(domain, probe){
 ```
 
 
-Work in progress:
+# Work in progress:
 
 See MSci_Project_Clustering.Rmd for the complete clustering analysis scripts.
 They were not inlcuded in teh dissertation as they were seen as more exploratory work and the start of a separate new project.
@@ -475,14 +495,13 @@ They were not inlcuded in teh dissertation as they were seen as more exploratory
 
 # all_domains directly from clin therefore contains patient info that doesn't have corresponding microarray data
 
-all_domains<- na.omit(all_domains)
-domains <- all_domains
-domains$PatientID <- NULL
-domains$ESSDAI_total_June15 <-NULL
-kc <- kmeans(domains, 6)
-kc
+# all_domains<- na.omit(all_domains)
+# domains <- all_domains
+# domains$PatientID <- NULL
+# domains$ESSDAI_total_June15 <-NULL
+# kc <- kmeans(domains, 6)
+# kc
 
-###????
-plot(domains[c("x", "y")], col=kc$cluster)
-points(kc$centers[,c("x", "y")], col=1:6, pch=8, cex=2)
+# plot(domains[c("x", "y")], col=kc$cluster)
+# points(kc$centers[,c("x", "y")], col=1:6, pch=8, cex=2)
 ```
